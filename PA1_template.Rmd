@@ -4,22 +4,108 @@ output:
   html_document:
     keep_md: true
 ---
-
-
 ## Loading and preprocessing the data
-
-
-
+```{r loadFile}
+# Reading the activity.csv file into a variable dataSet
+dataSet<-read.csv("activity.csv")
+# Loading the dplyr libary for easy data manipulation
+library(plyr)
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+library(lattice)
+```
 ## What is mean total number of steps taken per day?
-
-
+```{r computeMeanTotalStepsPerDay}
+# convert the date column of data set from type factor to Date
+dataSet<-transform(dataSet,date=as.Date(dataSet$date))
+# Proceeding to plot bar chart
+dataSet%>%
+group_by(date)%>%
+summarise(mean=mean(steps,na.rm=TRUE)) %>%
+ggplot(aes(date,mean))+geom_bar(stat="identity") + ggtitle("Mean total number of steps taken per day") + scale_x_date(breaks=unique(dataSet$date)[seq(from=0,to=61,by=15)])
+dataSet%>%
+    group_by(date)%>%
+    summarise(mean=mean(steps,na.rm=TRUE),median=median(steps,na.rm=TRUE)) %>%
+    kable()
+```
 
 ## What is the average daily activity pattern?
 
+```{r averageDailyPattern}
+dataSet %>%
+	group_by(interval) %>%
+	summarise(mean=mean(steps,na.rm=TRUE)) %>%
+	ggplot(aes(x=interval,y=mean),ymax=mean) + geom_line() 
+```
 
+```{r computeMaximumNumberOfSteps} 
+maxVal<-subset(dataSet,dataSet$steps==max(dataSet$steps,na.rm=TRUE))
+sprintf("The 5 minute interval %d contains the maximum number of %d steps", maxVal$interval, maxVal$steps)
+```
 
-## Imputing missing values
+## Inputing missing values
+```{r computeSumOfNAs} 
+sumOfNAs<-sum(is.na(dataSet))
+sprintf("There are %d rows with missing values in the dataset", sumOfNAs)
+```
+### Proceeding to implement the following strategy to fill all of the missing values in the dataset
+    * Identify the rows with missing values
+    * Identify the mean values per interval for that row
+    * Update the data set with the value
+```{r substituteNAsWithMean}
+    # Creating a new DataSet
+    dataSetWithoutNAs<-dataSet
+    # Function to calculate the mean value.
+    # The input to the function is the dataSet and the interval for which mean has to be calculated
+    meanPerInterval<-function(dataSet, intvl) mean(na.omit(subset(dataSet,dataSet$interval==intvl))$steps)
+    # Identify the rows in the data set with missing values.
+    nullRowIndex<-which(is.na(dataSetWithoutNAs))
+    # Iterate through the rows
+    for (i in nullRowIndex) {
+        dataSetWithoutNAs[i,]$steps<-meanPerInterval(dataSetWithoutNAs,dataSetWithoutNAs[i,]$interval)
+    }
+```
+```{r computeMeanTotalStepsPerDayWithoutNull}
+dataSetWithoutNAs%>%
+group_by(date)%>%
+summarise(mean=mean(steps,na.rm=TRUE)) %>%
+ggplot(aes(date,mean))+geom_bar(stat="identity") + ggtitle("Mean total number of steps taken per day")
+dataSetWithoutNAs%>%
+    group_by(date)%>%
+    summarise(mean=mean(steps,na.rm=TRUE),median=median(steps,na.rm=TRUE)) %>%
+    kable()
+```
 
-
-
+```{r computeMaximumNumberOfStepsWithoutNull} 
+maxVal<-subset(dataSetWithoutNAs,dataSetWithoutNAs$steps==max(dataSetWithoutNAs$steps))
+sprintf("The 5 minute interval %d contains the maximum number of %d steps", maxVal$interval, maxVal$steps)
+```
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r checkActivityTypePerDay} 
+# Create a new column Day and assign it values "Weekday" or "Weekend" depending on
+# the value of date. Using weekday() function for this.
+rownum<-nrow(dataSetWithoutNAs)
+for(i in 1:rownum) {
+	dayType=weekdays(as.Date(dataSetWithoutNAs[i,]$date))
+	if(dayType=="Sunday" || dayType=="Saturday") {
+		dataSetWithoutNAs[i,4]<-"Weekend"
+	} else {
+		dataSetWithoutNAs[i,4]<-"Weekday"
+	}
+}
+names(dataSetWithoutNAs)[4]<-"Day"
+
+dataSetDays <- ddply(dataSetWithoutNAs,
+              .(interval, Day), 
+              summarize, 
+              mean = mean(steps, na.rm=TRUE))
+xyplot(mean~interval|Day,data=dataSetDays,
+       type='l',layout=c(1,2),xlab="Interval",ylab="Number of steps") 
+
+```
+
+
+
